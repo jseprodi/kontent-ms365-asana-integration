@@ -66,6 +66,10 @@ function getAppConfig(context?: CustomAppContext): AppConfig {
       projectId: config.asana?.projectId,
       enabled: config.asana?.enabled ?? false,
     },
+    kontent: {
+      managementApiToken: config.kontent?.managementApiToken,
+      projectId: config.kontent?.projectId,
+    },
     syncSettings: {
       syncContributors: config.syncSettings?.syncContributors ?? true,
       syncWorkflowSteps: config.syncSettings?.syncWorkflowSteps ?? true,
@@ -79,6 +83,8 @@ function getAppConfig(context?: CustomAppContext): AppConfig {
     ms365HasCredentials: !!(finalConfig.microsoft365?.clientId && finalConfig.microsoft365?.tenantId && finalConfig.microsoft365?.clientSecret),
     asanaEnabled: finalConfig.asana?.enabled,
     asanaHasToken: !!finalConfig.asana?.accessToken,
+    hasManagementApiToken: !!finalConfig.kontent?.managementApiToken,
+    hasProjectId: !!finalConfig.kontent?.projectId,
     syncSettings: finalConfig.syncSettings,
   });
 
@@ -108,12 +114,19 @@ async function extractSyncContext(
   });
 
   // Fetch additional data from Management API if token is available
-  const managementApiToken = (window as any).__KONTENT_MANAGEMENT_API_TOKEN__;
-  const projectId = (window as any).__KONTENT_PROJECT_ID__ || context.environmentId;
+  // Try from appConfig first, then fallback to window (for development)
+  const managementApiToken = appConfig.kontent?.managementApiToken 
+    || (window as any).__KONTENT_MANAGEMENT_API_TOKEN__;
+  const projectId = appConfig.kontent?.projectId 
+    || (window as any).__KONTENT_PROJECT_ID__ 
+    || context.environmentId;
 
   log('debug', 'Management API check', {
     hasToken: !!managementApiToken,
+    hasTokenFromConfig: !!appConfig.kontent?.managementApiToken,
     projectId: projectId,
+    projectIdFromConfig: appConfig.kontent?.projectId,
+    environmentId: context.environmentId,
   });
 
   if (managementApiToken && projectId) {

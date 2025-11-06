@@ -11,6 +11,10 @@ export interface AppConfig {
     projectId?: string;
     enabled: boolean;
   };
+  kontent?: {
+    managementApiToken?: string;
+    projectId?: string;
+  };
   syncSettings?: {
     syncContributors: boolean;
     syncWorkflowSteps: boolean;

@@ -81,6 +81,10 @@ Then open `http://localhost:3000` in your browser. Note that the Kontent.ai SDK 
        "projectId": "your-project-id",
        "enabled": true
      },
+     "kontent": {
+       "managementApiToken": "your-management-api-token",
+       "projectId": "your-project-id"
+     },
      "syncSettings": {
        "syncContributors": true,
        "syncWorkflowSteps": true,
@@ -89,6 +93,8 @@ Then open `http://localhost:3000` in your browser. Note that the Kontent.ai SDK 
      }
    }
    ```
+   
+   **Note**: The `kontent.managementApiToken` and `kontent.projectId` are optional but recommended. They enable automatic fetching of contributors and workflow steps from the Management API. If not provided, the app will use the `environmentId` from the context as the project ID.
 
 ## Microsoft 365 Setup
 
