@@ -16,24 +16,40 @@ function log(level: 'info' | 'warn' | 'error' | 'debug', message: string, data?:
 }
 
 // Parse app configuration from Kontent.ai app config
-function getAppConfig(): AppConfig {
+function getAppConfig(context?: CustomAppContext): AppConfig {
   log('info', 'Loading app configuration...');
-  
-  // In Kontent.ai custom apps, configuration is passed via the appConfig property
-  // This will be available when the app is loaded in Kontent.ai
-  const appConfigJson = (window as any).__KONTENT_APP_CONFIG__;
   
   let config: AppConfig = {};
   
-  if (appConfigJson) {
+  // Try to get config from context first (provided by Kontent.ai SDK)
+  if (context?.appConfig) {
     try {
-      config = typeof appConfigJson === 'string' ? JSON.parse(appConfigJson) : appConfigJson;
-      log('info', 'App config loaded from window', { hasConfig: true });
+      const appConfigData = typeof context.appConfig === 'string' 
+        ? JSON.parse(context.appConfig) 
+        : context.appConfig;
+      config = appConfigData as AppConfig;
+      log('info', 'App config loaded from context.appConfig', { hasConfig: true });
     } catch (error) {
-      log('error', 'Failed to parse app config from window:', error);
+      log('error', 'Failed to parse app config from context:', error);
     }
-  } else {
-    log('warn', 'No app config found in window.__KONTENT_APP_CONFIG__');
+  }
+  
+  // Fallback to window (for testing/development)
+  if (!config.microsoft365?.clientId && !config.asana?.accessToken) {
+    const appConfigJson = (window as any).__KONTENT_APP_CONFIG__;
+    if (appConfigJson) {
+      try {
+        const windowConfig = typeof appConfigJson === 'string' 
+          ? JSON.parse(appConfigJson) 
+          : appConfigJson;
+        config = windowConfig as AppConfig;
+        log('info', 'App config loaded from window.__KONTENT_APP_CONFIG__', { hasConfig: true });
+      } catch (error) {
+        log('error', 'Failed to parse app config from window:', error);
+      }
+    } else {
+      log('warn', 'No app config found in context or window');
+    }
   }
 
   // Return config with defaults
@@ -162,10 +178,11 @@ async function extractSyncContext(
 async function initializeApp() {
   log('info', '=== Initializing Kontent.ai Custom App - Microsoft 365 & Asana Integration ===');
 
-  const appConfig = getAppConfig();
-  const syncService = new SyncService(appConfig);
-
   log('info', 'Setting up context observer...');
+
+  // Store the sync service so we can update it when config changes
+  let syncService: SyncService | null = null;
+  let currentAppConfig: AppConfig | null = null;
 
   // Subscribe to context changes
   const response = await observeCustomAppContext(async (context: CustomAppContext) => {
@@ -173,8 +190,25 @@ async function initializeApp() {
       currentPage: context.currentPage,
       contentItemId: context.currentPage === 'itemEditor' ? context.contentItemId : undefined,
       languageId: context.currentPage === 'itemEditor' ? context.languageId : undefined,
+      hasAppConfig: !!context.appConfig,
+      appConfigType: context.appConfig ? typeof context.appConfig : 'undefined',
+      appConfigPreview: context.appConfig 
+        ? (typeof context.appConfig === 'string' 
+            ? context.appConfig.substring(0, 100) 
+            : JSON.stringify(context.appConfig).substring(0, 100))
+        : undefined,
       timestamp: new Date().toISOString(),
     });
+
+    // Get config from context (it might be available now)
+    const appConfig = getAppConfig(context);
+    
+    // Recreate sync service if config changed or if it's the first time
+    if (!syncService || JSON.stringify(appConfig) !== JSON.stringify(currentAppConfig)) {
+      log('info', 'Creating/updating sync service with new config');
+      currentAppConfig = appConfig;
+      syncService = new SyncService(appConfig);
+    }
 
     const syncContext = await extractSyncContext(context, appConfig);
     if (syncContext) {
@@ -205,7 +239,13 @@ async function initializeApp() {
   log('info', 'Initial context received', {
     currentPage: response.context.currentPage,
     contentItemId: response.context.currentPage === 'itemEditor' ? response.context.contentItemId : undefined,
+    hasAppConfig: !!response.context.appConfig,
   });
+
+  // Get config from initial context
+  const appConfig = getAppConfig(response.context);
+  currentAppConfig = appConfig;
+  syncService = new SyncService(appConfig);
 
   // Handle initial context
   const initialSyncContext = await extractSyncContext(response.context, appConfig);
