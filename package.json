@@ -5,12 +5,11 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js",
-    "lint": "eslint src --ext .ts",
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "serve": "npx serve dist -p 3000"
+    "lint": "eslint src --ext .ts"
   },
   "keywords": [
     "kontent-ai",
@@ -31,6 +30,7 @@
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
     "eslint": "^8.56.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^5.4.21"
   }
 }
