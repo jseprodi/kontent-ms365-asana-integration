@@ -207,9 +207,11 @@ async function initializeApp() {
       appConfigType: context.appConfig ? typeof context.appConfig : 'undefined',
       appConfigPreview: context.appConfig 
         ? (typeof context.appConfig === 'string' 
-            ? context.appConfig.substring(0, 100) 
-            : JSON.stringify(context.appConfig).substring(0, 100))
+            ? context.appConfig.substring(0, 200) 
+            : JSON.stringify(context.appConfig).substring(0, 200))
         : undefined,
+      contextKeys: Object.keys(context),
+      fullContext: JSON.stringify(context, null, 2).substring(0, 500),
       timestamp: new Date().toISOString(),
     });
 
@@ -253,6 +255,9 @@ async function initializeApp() {
     currentPage: response.context.currentPage,
     contentItemId: response.context.currentPage === 'itemEditor' ? response.context.contentItemId : undefined,
     hasAppConfig: !!response.context.appConfig,
+    appConfigType: response.context.appConfig ? typeof response.context.appConfig : 'undefined',
+    contextKeys: Object.keys(response.context),
+    fullContextPreview: JSON.stringify(response.context, null, 2).substring(0, 1000),
   });
 
   // Get config from initial context
