@@ -15,6 +15,34 @@ function log(level: 'info' | 'warn' | 'error' | 'debug', message: string, data?:
   }
 }
 
+// Helper function to parse config data
+function getAppConfigFromData(config: any): AppConfig {
+  return {
+    microsoft365: {
+      clientId: config.microsoft365?.clientId || '',
+      tenantId: config.microsoft365?.tenantId || '',
+      clientSecret: config.microsoft365?.clientSecret || '',
+      enabled: config.microsoft365?.enabled ?? false,
+    },
+    asana: {
+      accessToken: config.asana?.accessToken || '',
+      workspaceId: config.asana?.workspaceId,
+      projectId: config.asana?.projectId,
+      enabled: config.asana?.enabled ?? false,
+    },
+    kontent: {
+      managementApiToken: config.kontent?.managementApiToken,
+      projectId: config.kontent?.projectId,
+    },
+    syncSettings: {
+      syncContributors: config.syncSettings?.syncContributors ?? true,
+      syncWorkflowSteps: config.syncSettings?.syncWorkflowSteps ?? true,
+      createCalendarEvents: config.syncSettings?.createCalendarEvents ?? true,
+      createTasks: config.syncSettings?.createTasks ?? true,
+    },
+  };
+}
+
 // Parse app configuration from Kontent.ai app config
 function getAppConfig(context?: CustomAppContext): AppConfig {
   log('info', 'Loading app configuration...');
@@ -70,31 +98,8 @@ function getAppConfig(context?: CustomAppContext): AppConfig {
     }
   }
 
-  // Return config with defaults
-  const finalConfig: AppConfig = {
-    microsoft365: {
-      clientId: config.microsoft365?.clientId || '',
-      tenantId: config.microsoft365?.tenantId || '',
-      clientSecret: config.microsoft365?.clientSecret || '',
-      enabled: config.microsoft365?.enabled ?? false,
-    },
-    asana: {
-      accessToken: config.asana?.accessToken || '',
-      workspaceId: config.asana?.workspaceId,
-      projectId: config.asana?.projectId,
-      enabled: config.asana?.enabled ?? false,
-    },
-    kontent: {
-      managementApiToken: config.kontent?.managementApiToken,
-      projectId: config.kontent?.projectId,
-    },
-    syncSettings: {
-      syncContributors: config.syncSettings?.syncContributors ?? true,
-      syncWorkflowSteps: config.syncSettings?.syncWorkflowSteps ?? true,
-      createCalendarEvents: config.syncSettings?.createCalendarEvents ?? true,
-      createTasks: config.syncSettings?.createTasks ?? true,
-    },
-  };
+  // Return config with defaults - use helper function
+  const finalConfig = getAppConfigFromData(config);
 
   log('info', 'Configuration loaded', {
     ms365Enabled: finalConfig.microsoft365?.enabled,
@@ -214,6 +219,7 @@ async function initializeApp() {
   // Store the sync service so we can update it when config changes
   let syncService: SyncService | null = null;
   let currentAppConfig: AppConfig | null = null;
+  let currentResponse: { context: CustomAppContext; isError: boolean } | null = null;
 
   // Subscribe to context changes
   const response = await observeCustomAppContext(async (context: CustomAppContext) => {
@@ -232,25 +238,48 @@ async function initializeApp() {
       timestamp: new Date().toISOString(),
     });
     
-    // Log full context for debugging
-    console.log('[Kontent.ai Integration] Full context in callback:', context);
-    
-    // Check if appConfig exists under a different name
-    Object.keys(context).forEach(key => {
-      if (key.toLowerCase().includes('config') || key.toLowerCase().includes('app')) {
-        console.log(`[Kontent.ai Integration] Found potential config key in callback: ${key}`, (context as any)[key]);
-      }
-    });
+    // Log full context for debugging (only on first context change to avoid spam)
+    if (!currentAppConfig) {
+      console.log('[Kontent.ai Integration] Full context in callback:', context);
+      
+      // Check if appConfig exists under a different name
+      Object.keys(context).forEach(key => {
+        if (key.toLowerCase().includes('config') || key.toLowerCase().includes('app')) {
+          console.log(`[Kontent.ai Integration] Found potential config key in callback: ${key}`, (context as any)[key]);
+        }
+      });
+    }
 
     // Get config from context (it might be available now)
-    const appConfig = getAppConfig(context);
-    
-    // Recreate sync service if config changed or if it's the first time
-    if (!syncService || JSON.stringify(appConfig) !== JSON.stringify(currentAppConfig)) {
-      log('info', 'Creating/updating sync service with new config');
-      currentAppConfig = appConfig;
-      syncService = new SyncService(appConfig);
+    // Use manually set config if available, otherwise try to get from context
+    let appConfig: AppConfig;
+    if (currentAppConfig && (currentAppConfig.microsoft365?.clientId || currentAppConfig.asana?.accessToken)) {
+      // Use manually set config if it has credentials
+      appConfig = currentAppConfig;
+      log('info', 'Using manually set configuration');
+    } else {
+      appConfig = getAppConfig(context);
+      
+      // Check if appConfig became available in this context update
+      if (context.appConfig && !currentAppConfig) {
+        log('info', 'App config found in context update!', {
+          appConfigType: typeof context.appConfig,
+          appConfigPreview: typeof context.appConfig === 'string' 
+            ? context.appConfig.substring(0, 200)
+            : JSON.stringify(context.appConfig).substring(0, 200),
+        });
+      }
+      
+      // Recreate sync service if config changed or if it's the first time
+      if (!syncService || JSON.stringify(appConfig) !== JSON.stringify(currentAppConfig)) {
+        log('info', 'Creating/updating sync service with new config');
+        currentAppConfig = appConfig;
+        syncService = new SyncService(appConfig);
+      }
     }
+    
+    // Store current response for manual config function
+    currentResponse = { context, isError: false };
 
     const syncContext = await extractSyncContext(context, appConfig);
     if (syncContext) {
@@ -261,9 +290,13 @@ async function initializeApp() {
       });
       
       // Sync to Microsoft 365 and Asana
-      syncService.syncContext(syncContext).catch((error) => {
-        log('error', 'Failed to sync context:', error);
-      });
+      if (syncService) {
+        syncService.syncContext(syncContext).catch((error) => {
+          log('error', 'Failed to sync context:', error);
+        });
+      } else {
+        log('warn', 'Sync service not available, skipping sync');
+      }
     } else {
       log('warn', 'No sync context extracted - sync will not occur');
     }
@@ -298,7 +331,15 @@ async function initializeApp() {
   });
 
   // Get config from initial context
-  const appConfig = getAppConfig(response.context);
+  let appConfig = getAppConfig(response.context);
+  
+  // Log if appConfig property exists but is undefined
+  if ('appConfig' in response.context && response.context.appConfig === undefined) {
+    log('warn', 'appConfig property exists in context but is undefined - configuration may not be saved in Kontent.ai');
+    log('info', 'You can manually set the config by running in console:');
+    log('info', 'window.__KONTENT_SET_CONFIG__({your config object here})');
+  }
+  
   currentAppConfig = appConfig;
   syncService = new SyncService(appConfig);
 
@@ -313,8 +354,45 @@ async function initializeApp() {
 
   // Store unsubscribe function for cleanup
   (window as any).__KONTENT_APP_UNSUBSCRIBE__ = response.unsubscribe;
+  
+  // Store current response
+  currentResponse = { context: response.context, isError: false };
+
+  // Expose function to manually set config (for testing/debugging) - defined after response is available
+  (window as any).__KONTENT_SET_CONFIG__ = (configJson: string | object) => {
+    try {
+      const config = typeof configJson === 'string' ? JSON.parse(configJson) : configJson;
+      log('info', 'Manually setting app configuration...');
+      currentAppConfig = getAppConfigFromData(config);
+      syncService = new SyncService(currentAppConfig);
+      log('info', 'Configuration manually set, sync service recreated', {
+        ms365Enabled: currentAppConfig.microsoft365?.enabled,
+        asanaEnabled: currentAppConfig.asana?.enabled,
+        hasManagementApiToken: !!currentAppConfig.kontent?.managementApiToken,
+      });
+      
+      // If there's a current context, trigger a sync
+      if (syncService && currentResponse && !currentResponse.isError) {
+        log('info', 'Triggering sync with manually set configuration...');
+        extractSyncContext(currentResponse.context, currentAppConfig).then(syncContext => {
+          if (syncContext && syncService) {
+            syncService.syncContext(syncContext).catch((error) => {
+              log('error', 'Failed to sync after manual config set:', error);
+            });
+          }
+        });
+      }
+      
+      return currentAppConfig;
+    } catch (error) {
+      log('error', 'Failed to manually set config:', error);
+      return null;
+    }
+  };
 
   log('info', '=== App initialized successfully ===');
+  log('info', 'To manually set configuration, run in console:');
+  log('info', 'window.__KONTENT_SET_CONFIG__({your config object})');
 }
 
 // Initialize app when DOM is ready
