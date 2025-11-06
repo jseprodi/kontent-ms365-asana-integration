@@ -47,8 +47,26 @@ function getAppConfig(context?: CustomAppContext): AppConfig {
       } catch (error) {
         log('error', 'Failed to parse app config from window:', error);
       }
-    } else {
-      log('warn', 'No app config found in context or window');
+    }
+    
+    // Also check URL parameters as last resort (for manual testing)
+    if (!config.microsoft365?.clientId && !config.asana?.accessToken) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const configParam = urlParams.get('config');
+        if (configParam) {
+          const urlConfig = JSON.parse(decodeURIComponent(configParam));
+          config = urlConfig as AppConfig;
+          log('info', 'App config loaded from URL parameter', { hasConfig: true });
+        }
+      } catch (error) {
+        // Ignore URL parameter parsing errors
+      }
+    }
+    
+    if (!config.microsoft365?.clientId && !config.asana?.accessToken) {
+      log('warn', 'No app config found in context, window, or URL parameters');
+      log('warn', 'Please ensure the configuration JSON is properly saved in Kontent.ai Custom App settings');
     }
   }
 
@@ -211,8 +229,17 @@ async function initializeApp() {
             : JSON.stringify(context.appConfig).substring(0, 200))
         : undefined,
       contextKeys: Object.keys(context),
-      fullContext: JSON.stringify(context, null, 2).substring(0, 500),
       timestamp: new Date().toISOString(),
+    });
+    
+    // Log full context for debugging
+    console.log('[Kontent.ai Integration] Full context in callback:', context);
+    
+    // Check if appConfig exists under a different name
+    Object.keys(context).forEach(key => {
+      if (key.toLowerCase().includes('config') || key.toLowerCase().includes('app')) {
+        console.log(`[Kontent.ai Integration] Found potential config key in callback: ${key}`, (context as any)[key]);
+      }
     });
 
     // Get config from context (it might be available now)
@@ -257,7 +284,17 @@ async function initializeApp() {
     hasAppConfig: !!response.context.appConfig,
     appConfigType: response.context.appConfig ? typeof response.context.appConfig : 'undefined',
     contextKeys: Object.keys(response.context),
-    fullContextPreview: JSON.stringify(response.context, null, 2).substring(0, 1000),
+  });
+  
+  // Log full context separately to see all properties
+  console.log('[Kontent.ai Integration] Full context object:', response.context);
+  console.log('[Kontent.ai Integration] Context keys:', Object.keys(response.context));
+  
+  // Check if appConfig exists under a different name
+  Object.keys(response.context).forEach(key => {
+    if (key.toLowerCase().includes('config') || key.toLowerCase().includes('app')) {
+      console.log(`[Kontent.ai Integration] Found potential config key: ${key}`, (response.context as any)[key]);
+    }
   });
 
   // Get config from initial context
