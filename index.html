@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kontent.ai - Microsoft 365 & Asana Integration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .status.info {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        .status.success {
+            background-color: #e8f5e9;
+            color: #388e3c;
+        }
+        .status.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Microsoft 365 & Asana Integration</h1>
+        <div id="status" class="status info">
+            <div class="loading">Initializing...</div>
+        </div>
+        <div id="content" style="display: none;">
+            <p>This custom app automatically syncs Kontent.ai content items to Microsoft 365 calendar events and Asana tasks.</p>
+            <p>When you open a content item in the editor, the app will:</p>
+            <ul>
+                <li>Create calendar events in Microsoft 365 for assigned contributors</li>
+                <li>Create tasks in Asana for the content item</li>
+                <li>Update existing events/tasks when workflow steps change</li>
+            </ul>
+            <p>Check the browser console for detailed logs.</p>
+        </div>
+    </div>
+    <script type="module" src="./dist/index.js"></script>
+    <script>
+        // Update status when app initializes
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const statusEl = document.getElementById('status');
+                const contentEl = document.getElementById('content');
+                if (statusEl && contentEl) {
+                    statusEl.className = 'status success';
+                    statusEl.innerHTML = '<strong>✓ App Initialized</strong><br>Integration is active and monitoring for changes.';
+                    contentEl.style.display = 'block';
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
+

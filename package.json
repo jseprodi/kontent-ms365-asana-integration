@@ -1,0 +1,36 @@
+{
+  "name": "kontent-ai-ms365-asana-integration",
+  "version": "1.0.0",
+  "description": "Kontent.ai custom app integrating with Microsoft 365 and Asana for calendar items and task management",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "serve": "npx serve dist -p 3000"
+  },
+  "keywords": [
+    "kontent-ai",
+    "microsoft-365",
+    "asana",
+    "custom-app"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@kontent-ai/custom-app-sdk": "^2.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "asana": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/asana": "^0.18.17",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^6.19.1",
+    "@typescript-eslint/parser": "^6.19.1",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
