@@ -56,8 +56,18 @@ export class Microsoft365Service {
     startTime: Date,
     endTime: Date
   ): Promise<string | null> {
+    console.log('[Microsoft365Service] createCalendarEvent called', {
+      userId,
+      hasClient: !!this.client,
+      enabled: this.config?.enabled,
+      contentItemId: context.contentItemId,
+    });
+
     if (!this.client || !this.config?.enabled) {
-      console.warn('Microsoft 365 service is not enabled or not initialized');
+      console.warn('[Microsoft365Service] Service is not enabled or not initialized', {
+        hasClient: !!this.client,
+        enabled: this.config?.enabled,
+      });
       return null;
     }
 
@@ -85,14 +95,31 @@ export class Microsoft365Service {
         reminderMinutesBeforeStart: 15,
       };
 
+      console.log('[Microsoft365Service] Creating calendar event', {
+        userId,
+        endpoint: `/users/${userId}/calendar/events`,
+        eventSubject: event.subject,
+        startTime: event.start.dateTime,
+        endTime: event.end.dateTime,
+      });
+
       const createdEvent = await this.client!
         .api(`/users/${userId}/calendar/events`)
         .post(event);
 
-      console.log(`Created calendar event: ${createdEvent.id}`);
+      console.log('[Microsoft365Service] Calendar event created successfully', {
+        eventId: createdEvent.id,
+        subject: createdEvent.subject,
+        webLink: createdEvent.webLink,
+      });
       return createdEvent.id;
-    } catch (error) {
-      console.error('Failed to create calendar event:', error);
+    } catch (error: any) {
+      console.error('[Microsoft365Service] Failed to create calendar event:', {
+        error: error.message,
+        stack: error.stack,
+        response: error.response,
+        statusCode: error.statusCode,
+      });
       return null;
     }
   }
