@@ -21,11 +21,9 @@
   "license": "MIT",
   "dependencies": {
     "@kontent-ai/custom-app-sdk": "^2.0.0",
-    "@microsoft/microsoft-graph-client": "^3.0.7",
-    "asana": "^1.0.1"
+    "@microsoft/microsoft-graph-client": "^3.0.7"
   },
   "devDependencies": {
-    "@types/asana": "^0.18.17",
     "@types/node": "^20.11.5",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
     "@typescript-eslint/parser": "^6.19.1",
