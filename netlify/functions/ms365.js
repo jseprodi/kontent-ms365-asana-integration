@@ -1,6 +1,3 @@
-// netlify/functions/ms365.js
-import fetch from 'node-fetch';
-
 const REQUIRED_ENV = [
   'MS365_TENANT_ID',
   'MS365_CLIENT_ID',
