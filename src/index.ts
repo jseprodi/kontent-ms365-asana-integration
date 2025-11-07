@@ -22,6 +22,7 @@ function getAppConfigFromData(config: any): AppConfig {
       clientId: config.microsoft365?.clientId || '',
       tenantId: config.microsoft365?.tenantId || '',
       clientSecret: config.microsoft365?.clientSecret || '',
+      proxyUrl: config.microsoft365?.proxyUrl || '',
       enabled: config.microsoft365?.enabled ?? false,
     },
     asana: {

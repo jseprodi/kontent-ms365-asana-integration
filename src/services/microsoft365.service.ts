@@ -1,173 +1,158 @@
-import { Client } from '@microsoft/microsoft-graph-client';
 import type { AppConfig, SyncContext } from '../types/config.js';
 
 export class Microsoft365Service {
-  private client: Client | null = null;
   private config: AppConfig['microsoft365'];
 
   constructor(config: AppConfig['microsoft365']) {
     this.config = config;
-    if (config?.enabled && config.clientId && config.tenantId && config.clientSecret) {
-      this.initializeClient();
-    }
   }
 
-  private async initializeClient() {
-    if (!this.config) return;
-
-    try {
-      // Get access token using client credentials flow
-      const tokenEndpoint = `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/token`;
-      const tokenResponse = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: this.config.clientId,
-          client_secret: this.config.clientSecret,
-          scope: 'https://graph.microsoft.com/.default',
-          grant_type: 'client_credentials',
-        }),
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error(`Failed to get access token: ${tokenResponse.statusText}`);
-      }
-
-      const tokenData = await tokenResponse.json();
-      const accessToken = tokenData.access_token;
-
-      // Initialize Graph client
-      this.client = Client.init({
-        authProvider: (done) => {
-          done(null, accessToken);
-        },
-      });
-    } catch (error) {
-      console.error('Failed to initialize Microsoft 365 client:', error);
-      throw error;
+  private getProxyBaseUrl(): string | null {
+    const proxyUrl = this.config?.proxyUrl;
+    if (!proxyUrl) {
+      return null;
     }
+    return proxyUrl.endsWith('/') ? proxyUrl.slice(0, -1) : proxyUrl;
+  }
+
+  private buildEventPayload(context: SyncContext, startTime: Date, endTime: Date) {
+    return {
+      subject: context.title || `Kontent.ai Content Item: ${context.contentItemId}`,
+      body: {
+        contentType: 'HTML',
+        content: `
+          <p>Content Item ID: ${context.contentItemId}</p>
+          <p>Language ID: ${context.languageId}</p>
+          ${context.workflowStep ? `<p>Workflow Step: ${context.workflowStep}</p>` : ''}
+          ${context.contributors ? `<p>Contributors: ${context.contributors.join(', ')}</p>` : ''}
+        `,
+      },
+      start: {
+        dateTime: startTime.toISOString(),
+        timeZone: 'UTC',
+      },
+      end: {
+        dateTime: endTime.toISOString(),
+        timeZone: 'UTC',
+      },
+      isReminderOn: true,
+      reminderMinutesBeforeStart: 15,
+    };
+  }
+
+  private async callProxy(
+    userPrincipalName: string,
+    eventPayload: any,
+    eventId?: string
+  ): Promise<any> {
+    const proxyBase = this.getProxyBaseUrl();
+    if (!proxyBase) {
+      throw new Error('Microsoft 365 proxy URL is not configured.');
+    }
+
+    const proxyEndpoint = `${proxyBase}/.netlify/functions/ms365`;
+
+    console.log('[Microsoft365Service] Calling proxy', {
+      proxyEndpoint,
+      hasEventId: !!eventId,
+      userPrincipalName,
+    });
+
+    const response = await fetch(proxyEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userPrincipalName,
+        eventPayload,
+        eventId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('[Microsoft365Service] Proxy call failed', {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody,
+      });
+      throw new Error(`Microsoft 365 proxy error: ${response.status} ${errorBody}`);
+    }
+
+    const data = await response.json();
+    console.log('[Microsoft365Service] Proxy call succeeded', {
+      hasId: !!data?.id,
+      hasWebLink: !!data?.webLink,
+    });
+    return data;
   }
 
   async createCalendarEvent(
-    userId: string,
+    userPrincipalName: string,
     context: SyncContext,
     startTime: Date,
     endTime: Date
   ): Promise<string | null> {
     console.log('[Microsoft365Service] createCalendarEvent called', {
-      userId,
-      hasClient: !!this.client,
+      userPrincipalName,
       enabled: this.config?.enabled,
+      hasProxyUrl: !!this.config?.proxyUrl,
       contentItemId: context.contentItemId,
     });
 
-    if (!this.client || !this.config?.enabled) {
-      console.warn('[Microsoft365Service] Service is not enabled or not initialized', {
-        hasClient: !!this.client,
+    if (!this.isEnabled()) {
+      console.warn('[Microsoft365Service] Service is not enabled or proxy URL missing', {
         enabled: this.config?.enabled,
+        proxyUrl: this.config?.proxyUrl,
       });
       return null;
     }
 
     try {
-      const event = {
-        subject: context.title || `Kontent.ai Content Item: ${context.contentItemId}`,
-        body: {
-          contentType: 'HTML',
-          content: `
-            <p>Content Item ID: ${context.contentItemId}</p>
-            <p>Language ID: ${context.languageId}</p>
-            ${context.workflowStep ? `<p>Workflow Step: ${context.workflowStep}</p>` : ''}
-            ${context.contributors ? `<p>Contributors: ${context.contributors.join(', ')}</p>` : ''}
-          `,
-        },
-        start: {
-          dateTime: startTime.toISOString(),
-          timeZone: 'UTC',
-        },
-        end: {
-          dateTime: endTime.toISOString(),
-          timeZone: 'UTC',
-        },
-        isReminderOn: true,
-        reminderMinutesBeforeStart: 15,
-      };
-
-      console.log('[Microsoft365Service] Creating calendar event', {
-        userId,
-        endpoint: `/users/${userId}/calendar/events`,
-        eventSubject: event.subject,
-        startTime: event.start.dateTime,
-        endTime: event.end.dateTime,
-      });
-
-      const createdEvent = await this.client!
-        .api(`/users/${userId}/calendar/events`)
-        .post(event);
-
-      console.log('[Microsoft365Service] Calendar event created successfully', {
-        eventId: createdEvent.id,
-        subject: createdEvent.subject,
-        webLink: createdEvent.webLink,
-      });
-      return createdEvent.id;
-    } catch (error: any) {
-      console.error('[Microsoft365Service] Failed to create calendar event:', {
-        error: error.message,
-        stack: error.stack,
-        response: error.response,
-        statusCode: error.statusCode,
-      });
+      const eventPayload = this.buildEventPayload(context, startTime, endTime);
+      const result = await this.callProxy(userPrincipalName, eventPayload);
+      if (result?.id) {
+        console.log('[Microsoft365Service] Calendar event created via proxy', {
+          eventId: result.id,
+          subject: result.subject,
+          webLink: result.webLink,
+        });
+        return result.id;
+      }
+      console.warn('[Microsoft365Service] Proxy response did not include event id');
+      return null;
+    } catch (error) {
+      console.error('[Microsoft365Service] Failed to create calendar event via proxy:', error);
       return null;
     }
   }
 
   async updateCalendarEvent(
-    userId: string,
+    userPrincipalName: string,
     eventId: string,
     context: SyncContext,
     startTime: Date,
     endTime: Date
   ): Promise<boolean> {
-    if (!this.client || !this.config?.enabled) {
+    if (!this.isEnabled()) {
+      console.warn('[Microsoft365Service] Update skipped - service not enabled or proxy missing');
       return false;
     }
 
     try {
-      const event = {
-        subject: context.title || `Kontent.ai Content Item: ${context.contentItemId}`,
-        body: {
-          contentType: 'HTML',
-          content: `
-            <p>Content Item ID: ${context.contentItemId}</p>
-            <p>Language ID: ${context.languageId}</p>
-            ${context.workflowStep ? `<p>Workflow Step: ${context.workflowStep}</p>` : ''}
-            ${context.contributors ? `<p>Contributors: ${context.contributors.join(', ')}</p>` : ''}
-          `,
-        },
-        start: {
-          dateTime: startTime.toISOString(),
-          timeZone: 'UTC',
-        },
-        end: {
-          dateTime: endTime.toISOString(),
-          timeZone: 'UTC',
-        },
-      };
-
-      await this.client!.api(`/users/${userId}/calendar/events/${eventId}`).patch(event);
-      console.log(`Updated calendar event: ${eventId}`);
+      const eventPayload = this.buildEventPayload(context, startTime, endTime);
+      await this.callProxy(userPrincipalName, eventPayload, eventId);
+      console.log('[Microsoft365Service] Calendar event updated via proxy', { eventId });
       return true;
     } catch (error) {
-      console.error('Failed to update calendar event:', error);
+      console.error('[Microsoft365Service] Failed to update calendar event via proxy:', error);
       return false;
     }
   }
 
   isEnabled(): boolean {
-    return this.config?.enabled === true && this.client !== null;
+    return this.config?.enabled === true && !!this.getProxyBaseUrl();
   }
 }
 

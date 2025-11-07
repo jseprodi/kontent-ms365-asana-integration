@@ -21,7 +21,8 @@
   "license": "MIT",
   "dependencies": {
     "@kontent-ai/custom-app-sdk": "^2.0.0",
-    "@microsoft/microsoft-graph-client": "^3.0.7"
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
